@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DYART Business Intelligence — Motor de Áudios (hip.hop)</title>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      background-color: #f4f6f9; 
+      margin: 0; 
+      padding: 20px; 
+      color: #333; 
+    }
+    .card { 
+      background: #fff; 
+      padding: 24px; 
+      border-radius: 8px; 
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+      max-width: 800px; 
+      margin: 0 auto 20px auto; 
+    }
+    h1 { 
+      margin-top: 0; 
+      color: #1a73e8; 
+      font-size: 22px; 
+    }
+    .version-tag {
+      display: inline-block;
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    p {
+      color: #555;
+      font-size: 14px;
+    }
+    .btn { 
+      background: #1a73e8; 
+      color: #fff; 
+      border: none; 
+      padding: 12px 24px; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      font-size: 16px; 
+      font-weight: bold; 
+      margin-top: 10px; 
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn:hover { 
+      background: #1557b0; 
+    }
+    .btn:disabled { 
+      background: #ccc; 
+      cursor: not-allowed; 
+    }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #log { 
+      background: #1e1e1e; 
+      color: #00ff66; 
+      padding: 15px; 
+      border-radius: 6px; 
+      font-family: monospace; 
+      height: 400px; 
+      overflow-y: auto; 
+      white-space: pre-wrap; 
+      font-size: 13px; 
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>DYART Business Intelligence — Motor de Áudios (hip.hop)</h1>
+    <div class="version-tag">Versão Ativa: Build 15:45 (Métricas de Tempo e Créditos)</div>
+    <p>Geração automatizada de narrações multilíngues via ElevenLabs a partir da planilha de dados consolidada.</p>
+
+    <button class="btn" id="btnIniciar" onclick="processarPlanilha()">
+      <div class="spinner" id="btnSpinner"></div>
+      <span id="btnTexto">Iniciar Geração de Áudios</span>
+    </button>
+  </div>
+
+  <div class="card">
+    <h3>Log de Processamento e Controle de Qualidade</h3>
+    <div id="log">Aguardando comando de início...</div>
+  </div>
+
+  <script>
+    // ============================================================
+    // CONFIGURAÇÕES INTERNAS DYART
+    // ============================================================
+    const API_KEY_ELEVENLABS = "sk_29ed24bb2146ebd2d02ea331b52e1949b962aa022db108c1"; 
+    
+    // Voice ID Fallback da Roberta
+    const VOICE_ROBERTA_DEFAULT = "RGymW84CSmfVugnA5tvA";
+
+    const SPREADSHEET_ID = '1jJICHQs7sWhx82q6D3fZyCUcht5j9JINJRaHpbyV0Yk';
+    const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+
+    function logMessage(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.textContent += `\n${msg}`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function lerColuna(celulasLinha, indiceColuna) {
+      if (!celulasLinha || indiceColuna >= celulasLinha.length || !celulasLinha[indiceColuna]) {
+        return '';
+      }
+      const celula = celulasLinha[indiceColuna];
+      let val = (celula.v !== undefined && celula.v !== null) ? celula.v : celula.f;
+      if (val === null || val === undefined) return '';
+      return String(val).trim();
+    }
+
+    async function processarPlanilha() {
+      const btn = document.getElementById('btnIniciar');
+      const spinner = document.getElementById('btnSpinner');
+      const btnTexto = document.getElementById('btnTexto');
+
+      if (!API_KEY_ELEVENLABS || API_KEY_ELEVENLABS === "COLE_SUA_CHAVE_AQUI") {
+        alert('Por favor, insira a chave da ElevenLabs na variável API_KEY_ELEVENLABS no código.');
+        return;
+      }
+
+      btn.disabled = true;
+      spinner.style.display = 'inline-block';
+      btnTexto.textContent = 'Processando...';
+
+      // Marcação do horário e tempo inicial
+      const horaInicio = new Date();
+      const tempoInicio = performance.now();
+      let totalCaracteresConsumidos = 0;
+      let totalAudiosGerados = 0;
+
+      document.getElementById('log').textContent = `🚀 Início do lote: ${horaInicio.toLocaleTimeString('pt-BR')}\nConectando ao Google Sheets...`;
+
+      try {
+        const response = await fetch(SHEET_URL);
+        const text = await response.text();
+        
+        const jsonString = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+        const jsonData = JSON.parse(jsonString);
+        const linhas = jsonData.table.rows;
+
+        logMessage(`Registros encontrados na planilha: ${linhas.length}`);
+
+        for (let i = 0; i < linhas.length; i++) {
+          const colunas = linhas[i].c;
+          if (!colunas) continue;
+
+          // Coluna A (0) = NOME DO PATRIMÔNIO
+          const nomePatrimonio = lerColuna(colunas, 0);
+          
+          if (!nomePatrimonio || nomePatrimonio.toUpperCase().includes("NOME DO PATRIMÔNIO")) {
+            continue;
+          }
+
+          // Voice IDs: Coluna O (14), P (15), Q (16)
+          const voicePT = lerColuna(colunas, 14) || VOICE_ROBERTA_DEFAULT;
+          const voiceEN = lerColuna(colunas, 15) || VOICE_ROBERTA_DEFAULT;
+          const voiceES = lerColuna(colunas, 16) || VOICE_ROBERTA_DEFAULT;
+
+          // Mapeamento: PT (4, 5) | EN (9, 10) | ES (11, 12)
+          const idiomas = [
+            { lang: 'PT', texto: lerColuna(colunas, 4),  arquivo: lerColuna(colunas, 5),  voiceId: voicePT },
+            { lang: 'EN', texto: lerColuna(colunas, 9),  arquivo: lerColuna(colunas, 10), voiceId: voiceEN },
+            { lang: 'ES', texto: lerColuna(colunas, 11), arquivo: lerColuna(colunas, 12), voiceId: voiceES }
+          ];
+
+          logMessage(`\n==================================================`);
+          logMessage(`📍 Patrimônio: ${nomePatrimonio}`);
+          logMessage(`==================================================`);
+
+          for (const item of idiomas) {
+            if (!item.texto && !item.arquivo) {
+              logMessage(`⚠️ [${item.lang}] Texto e Nome de Arquivo ausentes. Pulando...`);
+              continue;
+            }
+            if (!item.texto) {
+              logMessage(`⚠️ [${item.lang}] Texto ausente na coluna correspondente. Pulando...`);
+              continue;
+            }
+            if (!item.arquivo) {
+              logMessage(`⚠️ [${item.lang}] Nome do arquivo .mp3 ausente na coluna correspondente. Pulando...`);
+              continue;
+            }
+
+            let nomeFinal = item.arquivo;
+            if (!nomeFinal.toLowerCase().endsWith('.mp3')) {
+              nomeFinal += '.mp3';
+            }
+
+            const tamanhoTexto = item.texto.length;
+            logMessage(`🎙️ Sintetizando [${item.lang}]: ${nomeFinal} (${tamanhoTexto} chars)... (Voz: ${item.voiceId})`);
+            
+            await gerarAudioElevenLabs(item.texto, nomeFinal, item.voiceId, API_KEY_ELEVENLABS);
+            
+            totalCaracteresConsumidos += tamanhoTexto;
+            totalAudiosGerados++;
+
+            // Pausa estratégica de 1 segundo entre chamadas
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+
+        // Cálculo das métricas finais
+        const horaFim = new Date();
+        const tempoFim = performance.now();
+        const duracaoSegundos = ((tempoFim - tempoInicio) / 1000).toFixed(1);
+        const minutos = Math.floor(duracaoSegundos / 60);
+        const segundos = (duracaoSegundos % 60).toFixed(1);
+
+        const tempoFormatado = minutos > 0 ? `${minutos}m ${segundos}s` : `${duracaoSegundos}s`;
+
+        logMessage('\n==================================================');
+        logMessage('📊 RESUMO DE EXECUÇÃO E MÉTRICAS DA SÍNTESE');
+        logMessage('==================================================');
+        logMessage(`⏱️ Horário de Início:   ${horaInicio.toLocaleTimeString('pt-BR')}`);
+        logMessage(`⏱️ Horário de Término:  ${horaFim.toLocaleTimeString('pt-BR')}`);
+        logMessage(`⏳ Tempo Total:         ${tempoFormatado}`);
+        logMessage(`🔊 Áudios Gerados:      ${totalAudiosGerados} arquivos`);
+        logMessage(`💳 Créditos Utilizados: ${totalCaracteresConsumidos.toLocaleString('pt-BR')} caracteres`);
+        logMessage('==================================================');
+        logMessage('🎉 Processamento concluído com sucesso!');
+        logMessage(`Mova os arquivos baixados para a pasta IMPL_output_audios no Google Drive.`);
+
+      } catch (error) {
+        logMessage(`❌ Erro durante o processamento: ${error.message}`);
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+        btnTexto.textContent = 'Iniciar Geração de Áudios';
+      }
+    }
+
+    async function gerarAudioElevenLabs(texto, nomeArquivo, voiceId, apiKey) {
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKey
+          },
+          body: JSON.stringify({
+            text: texto,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.detail?.message || `HTTP ${response.status} - ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = nomeArquivo;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        logMessage(`✅ Arquivo gerado e baixado: ${nomeArquivo}`);
+
+      } catch (err) {
+        logMessage(`❌ Erro ElevenLabs (${nomeArquivo}): ${err.message}`);
+      }
+    }
+  </script>
+</body>
+</html>
